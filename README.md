@@ -23,6 +23,11 @@ npm run build    # static site in ./build
 | Fixed stage / grid / settings HUD | `src/lib/pixel/PixelStage.svelte` |
 | Pointer effects | `src/lib/pixel/HoverFx.svelte` |
 
+More detail:
+
+- [`src/lib/pixel/README.md`](src/lib/pixel/README.md): pipeline architecture, filter graph, settings API, extending palettes and hover effects
+- [`src/lib/content/README.md`](src/lib/content/README.md): page structure, rules for writing content that survives the grid, fonts, projects
+
 **Author content in grayscale.** The pipeline converts to luminance and gradient-maps it
 onto the active palette, so brightness is what matters, not hue.
 
