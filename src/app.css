@@ -16,7 +16,7 @@
 	--font-mono: 'JetBrains Mono', ui-monospace, monospace;
 	--wrap: min(72rem, 100% - 2.5rem);
 	/* --px (current pixel size) is set by the pixel stage; use it to keep small text legible */
-	--px: 4px;
+	--px: 2px;
 	--small: max(1rem, calc(var(--px) * 4.5));
 }
 

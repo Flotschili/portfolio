@@ -15,19 +15,19 @@ export type HoverMode = (typeof hoverModes)[number];
 
 export const defaults = {
 	enabled: true,
-	pixelSize: 4,
+	pixelSize: 2,
 	aa: 'detail' as AAMode,
-	palette: 'mono' as PaletteId,
+	palette: 'ember' as PaletteId,
 	dither: true,
 	ditherStrength: 0.6,
 	grid: 0.18,
-	hover: 'trail' as HoverMode
+	hover: 'ripple' as HoverMode
 };
 
 export const PIXEL_MIN = 2;
 export const PIXEL_MAX = 32;
 
-const STORAGE_KEY = 'pixel-settings-v3';
+const STORAGE_KEY = 'pixel-settings-v4';
 
 class PixelSettings {
 	enabled = $state(defaults.enabled);

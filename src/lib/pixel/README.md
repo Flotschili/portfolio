@@ -91,14 +91,14 @@ pixel.palette = 'pastel';
 | Field | Values | Default |
 | --- | --- | --- |
 | `enabled` | pipeline on/off (bypass) | `true` |
-| `pixelSize` | `PIXEL_MIN`–`PIXEL_MAX` (2–32) | `4` |
+| `pixelSize` | `PIXEL_MIN`–`PIXEL_MAX` (2–32) | `2` |
 | `aa` | `detail` · `nearest` · `soft` · `average` | `detail` |
-| `palette` | any key of `palettes` | `mono` |
+| `palette` | any key of `palettes` | `ember` |
 | `dither`, `ditherStrength` | bool, 0.1–1 | `true`, `0.6` |
 | `grid` | gap-line opacity 0–0.6 | `0.18` |
-| `hover` | `trail` · `ripple` · `spotlight` · `off` | `trail` |
+| `hover` | `trail` · `ripple` · `spotlight` · `off` | `ripple` |
 
-Load order on startup: defaults → localStorage (`pixel-settings-v3`) → URL query
+Load order on startup: defaults → localStorage (`pixel-settings-v4`) → URL query
 (`?px=&palette=&aa=&hover=&dither=0|1&grid=`). Bump the storage key when defaults change
 in a way that old saved settings shouldn't override.
 
