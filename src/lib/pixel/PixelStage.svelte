@@ -168,6 +168,8 @@
 		max-width: calc(100vw - 24px);
 		/* a bit of padding so the HUD's own pixel grid has room at the edges */
 		padding: 3px;
+		/* like .stage: without a compositing layer, Chromium doesn't sample the dot grid sparsely */
+		will-change: filter;
 	}
 
 	.panel {

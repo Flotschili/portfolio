@@ -4,7 +4,7 @@
   SourceGraphic
     → sampling mode              detail pooling / blur / none
     → sample 1 px per cell       grid of dots, `in`-composited with the source
-    → dilate dots to full cells  feMorphology (+ 1px merge for even sizes)
+    → dilate dots to full cells  feMorphology (+ 2×2 box convolution for even sizes)
     → luminance                  feColorMatrix
     → (optional) ordered dither  4×4 Bayer tile, added arithmetically
     → palette gradient map       feComponentTransfer, discrete
@@ -44,10 +44,21 @@
 		[15, 7, 13, 5]
 	];
 
+	/** Rec. 709 luminance weights, as matrix columns R G B. */
+	const LUM = [0.2126, 0.7152, 0.0722];
+	const lumRow = (k: number, offset: number) => `${LUM.map((w) => w * k).join(' ')} 0 ${offset}`;
+	/** detail: pack each pixel as (L, 1 − L, 1, 1) so one erode yields min L and 1 − max L. */
+	const PACK = `${lumRow(1, 0)}  ${lumRow(-1, 1)}  0 0 0 0 1  0 0 0 0 1`;
+	/** detail: threshold the surrounding luminance at 128/255 into (light, dark, dark, 1), each 0 or 1. */
+	const MASK = `${lumRow(255, -127)}  ${lumRow(-255, 128)}  ${lumRow(-255, 128)}  0 0 0 0 1`;
+	/** Final luminance. detail's src is (light·minL, dark·(1 − maxL), dark), so R − G + B picks the pooled tone. */
+	const TO_GRAY = $derived(aa === 'detail' ? '1 -1 1 0 0' : `${LUM.join(' ')} 0 0`);
+
 	const s = $derived(Math.max(1, Math.round(size)));
 	const r = $derived(Math.floor((s - 1) / 2));
 	const even = $derived(s % 2 === 0);
 	const blur = $derived(aa === 'average' ? s * 0.32 : aa === 'soft' ? s * 0.15 : 0);
+	const poolIn = $derived(even ? 'pack2' : 'pack');
 
 	const colors = $derived(sortedPalette(palette));
 	const table = (ch: 0 | 1 | 2) => colors.map((c) => c[ch].toFixed(4)).join(' ');
@@ -75,36 +86,25 @@
 		  Detail pooling: the minority tone of the surroundings wins. Cells in light areas take their darkest
 		  pixel (min-pool), cells in dark areas their lightest (max-pool) — so thin strokes survive
 		  whether they're dark-on-light or light-on-dark.
+
+		  Perf: in Chromium a result consumed twice costs as if re-rendered per consumer, so the only joins sit on the
+		  cheap packed image — never downstream of the blur or the erode.
 		-->
 		<feGaussianBlur in="SourceGraphic" stdDeviation={Math.max(4, s * 1.5)} edgeMode="duplicate" result="avg" />
-		<feColorMatrix
-			in="avg"
-			type="matrix"
-			values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0.2126 0.7152 0.0722 0 0"
-			result="avgLum"
-		/>
-		<feComponentTransfer in="avgLum" result="lightMask">
-			<feFuncA type="discrete" tableValues="0 1" />
-		</feComponentTransfer>
-		<!-- min/max over the cell; the window is [0, 2r], so even sizes need one more column/row -->
-		<feMorphology in="SourceGraphic" operator="erode" radius={Math.max(r, 0.001)} result={even ? 'lo0' : 'lo'} />
-		<feMorphology in="SourceGraphic" operator="dilate" radius={Math.max(r, 0.001)} result={even ? 'hi0' : 'hi'} />
+		<feColorMatrix in="avg" type="matrix" values={MASK} result="mask" />
+		<feColorMatrix in="SourceGraphic" type="matrix" values={PACK} result="pack" />
+		<!-- min over the cell; the erode window is [0, 2r], so even sizes pre-min one more column/row -->
 		{#if even}
-			<feOffset in="lo0" dx="-1" dy="0" result="loX" />
-			<feBlend in="lo0" in2="loX" mode="darken" result="lo1" />
-			<feOffset in="lo1" dx="0" dy="-1" result="loY" />
-			<feBlend in="lo1" in2="loY" mode="darken" result="lo" />
-			<feOffset in="hi0" dx="-1" dy="0" result="hiX" />
-			<feBlend in="hi0" in2="hiX" mode="lighten" result="hi1" />
-			<feOffset in="hi1" dx="0" dy="-1" result="hiY" />
-			<feBlend in="hi1" in2="hiY" mode="lighten" result="hi" />
+			<feOffset in="pack" dx="-1" dy="0" result="packX" />
+			<feBlend in="pack" in2="packX" mode="darken" result="pack1" />
+			<feOffset in="pack1" dx="0" dy="-1" result="packY" />
+			<feBlend in="pack1" in2="packY" mode="darken" result="pack2" />
 		{/if}
-		<feComposite in="lo" in2="lightMask" operator="in" result="loPart" />
-		<feComposite in="hi" in2="lightMask" operator="out" result="hiPart" />
-		<feMerge result="src">
-			<feMergeNode in="loPart" />
-			<feMergeNode in="hiPart" />
-		</feMerge>
+		{#if r > 0}
+			<feMorphology in={poolIn} operator="erode" radius={r} result="pooled" />
+		{/if}
+		<!-- multiply by the mask → (light·minL, dark·(1 − maxL), dark); TO_GRAY resolves it -->
+		<feComposite in={r > 0 ? 'pooled' : poolIn} in2="mask" operator="arithmetic" k1="1" k2="0" k3="0" k4="0" result="src" />
 	{:else if blur > 0}
 		<feGaussianBlur in="SourceGraphic" stdDeviation={blur} edgeMode="duplicate" result="src" />
 	{:else}
@@ -117,35 +117,34 @@
 	<feTile in="cell" result="dots" />
 	<feComposite in="src" in2="dots" operator="in" result="samples" />
 
-	<!-- grow every dot to fill its cell -->
-	{#if r > 0}
-		<feMorphology in="samples" operator="dilate" radius={r} result="grown" />
-	{:else}
-		<feOffset in="samples" dx="0" dy="0" result="grown" />
-	{/if}
+	<!--
+	  grow every dot to fill its cell. Even sizes first widen each dot to 2×2 with a box
+	  convolution (exact: every window holds a single dot), so the dilate lands on exactly s.
+	-->
 	{#if even}
-		<feOffset in="grown" dx="1" dy="0" result="gx" />
-		<feMerge result="growx">
-			<feMergeNode in="grown" />
-			<feMergeNode in="gx" />
-		</feMerge>
-		<feOffset in="growx" dx="0" dy="1" result="gy" />
-		<feMerge result="blocks">
-			<feMergeNode in="growx" />
-			<feMergeNode in="gy" />
-		</feMerge>
+		<feConvolveMatrix
+			in="samples"
+			order="2"
+			kernelMatrix="1 1 1 1"
+			divisor="1"
+			targetX="1"
+			targetY="1"
+			edgeMode="none"
+			preserveAlpha="false"
+			result="samples2"
+		/>
+	{/if}
+	{#if r > 0}
+		<feMorphology in={even ? 'samples2' : 'samples'} operator="dilate" radius={r} result="blocks" />
 	{:else}
-		<feOffset in="grown" dx="0" dy="0" result="blocks" />
+		<feOffset in={even ? 'samples2' : 'samples'} dx="0" dy="0" result="blocks" />
 	{/if}
 
 	<!-- to luminance -->
 	<feColorMatrix
 		in="blocks"
 		type="matrix"
-		values="0.2126 0.7152 0.0722 0 0
-		        0.2126 0.7152 0.0722 0 0
-		        0.2126 0.7152 0.0722 0 0
-		        0      0      0      1 0"
+		values="{TO_GRAY}  {TO_GRAY}  {TO_GRAY}  0 0 0 1 0"
 		result="lum"
 	/>
 
@@ -181,7 +180,7 @@
 	{/if}
 
 	<!-- gradient-map into the palette -->
-	<feComponentTransfer in="toned">
+	<feComponentTransfer in="toned" result="mapped">
 		<feFuncR type="discrete" tableValues={table(0)} />
 		<feFuncG type="discrete" tableValues={table(1)} />
 		<feFuncB type="discrete" tableValues={table(2)} />
@@ -189,4 +188,8 @@
 			<feFuncA type="linear" slope="0" intercept="1" />
 		{/if}
 	</feComponentTransfer>
+	{#if aa === 'detail' && !opaque}
+		<!-- detail works on an opaque packed image, so restore the source's coverage -->
+		<feComposite in="mapped" in2="SourceGraphic" operator="in" />
+	{/if}
 </filter>

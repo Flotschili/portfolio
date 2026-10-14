@@ -45,17 +45,20 @@ palette as everything else.
 
 1. **Sampling mode** → `src`
    - `detail`: blur widely (σ = max(4, 1.5·s)) to get the surrounding brightness, then
-     threshold it into a mask. Light surroundings → `erode` (min-pool, dark wins). Dark
-     surroundings → `dilate` (max-pool, light wins). The two are combined through the mask.
-     Thin strokes survive in both directions.
+     threshold it into a mask. Light surroundings → min-pool (dark wins). Dark surroundings →
+     max-pool (light wins). Thin strokes survive in both directions. Pooling runs on
+     luminance packed as `(L, 1 − L)`, so a single `erode` yields both `min L` and
+     `1 − max L`. Multiplying by the mask and the `R − G + B` luminance step in 4. pick the
+     right one per pixel.
    - `soft` / `average`: Gaussian blur (σ = 0.15·s / 0.32·s), roughly anti-aliasing / box filtering.
    - `nearest`: pass-through.
 2. **Sample one pixel per cell.** A 1×1 `feFlood` at `(r, r)`, padded to an `s×s` subregion
    and `feTile`d, gives a dot grid. `feComposite in` keeps only `src` under the dots.
 3. **Grow dots into blocks.** `feMorphology dilate` with radius `r` gives `2r+1` px blocks.
-   That's exactly `s` for odd sizes. For even sizes it's one short, so the result is merged
-   with copies shifted by 1px right and down.
-4. **Luminance.** `feColorMatrix` with Rec. 709 weights.
+   That's exactly `s` for odd sizes. For even sizes it's one short, so the dots are first
+   widened to 2×2 with an `feConvolveMatrix` box kernel. That's exact because every 2×2
+   window holds at most one dot.
+4. **Luminance.** `feColorMatrix` with Rec. 709 weights (`R − G + B` in `detail` mode).
 5. **Dither (optional).** A 4×4 Bayer matrix of `s×s` flood cells is tiled and added with
    `feComposite arithmetic` (`lum + amt·(bayer − 0.5)`). `amt = strength / (colors − 1)`,
    so the dither spans about one palette band.
@@ -69,13 +72,22 @@ palette as everything else.
   discrete steps run in linearRGB and the bands land in the wrong places.
 - `feComposite arithmetic` works on premultiplied RGBA, so dithering adds alpha on
   transparent areas. Only use dither on opaque layers (the HUD has it off).
-- In `detail` mode, the even-size min/max fix uses shifted copies plus `feBlend
-  darken/lighten`. Just widening the morphology radius made thick strokes hollow and
-  pulled in the transparent area past the element edge.
+- In `detail` mode, the even-size window fix uses a 1px-shifted copy plus `feBlend darken`.
+  Just widening the morphology radius made thick strokes hollow and pulled in the
+  transparent area past the element edge.
+- **Performance: avoid reusing expensive results.** In Chromium, a result consumed by two
+  primitives behaves as if it (and everything upstream) is rendered once per use. Every
+  `feBlend`/`feMerge` of a result with a shifted copy of itself roughly doubles the cost of
+  the chain before it. Keep such joins on cheap, early nodes (the packed luminance in
+  `detail`), never after a blur or morphology. Restructuring along these lines made
+  `detail` at even sizes 5–8× faster on an integrated GPU.
+- Elements using a `PixelFilter` need their own compositing layer (`will-change: filter`).
+  Without one, Chromium renders the filter on a path where the dot grid isn't sparse, so
+  nothing gets pixelated and the even-size convolution saturates.
 - The filter id includes all pipeline settings (`px-main-6-detail-mono-…`). Changing the id
   forces every browser to re-resolve the filter, instead of relying on in-place attribute
   updates being picked up.
-- Morphology radius `0` disables the primitive, so `r = 0` (size 2) is special-cased.
+- Morphology radius `0` disables the primitive, so `r = 0` (size 2) skips it.
 
 ## Settings (`settings.svelte.ts`)
 
