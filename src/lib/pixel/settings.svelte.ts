@@ -16,7 +16,7 @@ export type HoverMode = (typeof hoverModes)[number];
 export const defaults = {
 	enabled: true,
 	pixelSize: 2,
-	aa: 'nearest' as AAMode,
+	aa: 'soft' as AAMode,
 	palette: 'ember' as PaletteId,
 	dither: true,
 	ditherStrength: 1,
