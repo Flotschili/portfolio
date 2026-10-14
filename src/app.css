@@ -1,0 +1,61 @@
+/*
+ * Global look of the *source* content — what goes into the pixel pipeline.
+ * Author everything in grayscale: the pipeline maps brightness onto the active palette.
+ * Change fonts here.
+ */
+@import '@fontsource-variable/space-grotesk';
+@import '@fontsource/jetbrains-mono/400.css';
+@import '@fontsource/jetbrains-mono/700.css';
+
+:root {
+	--ink: #000;
+	--paper: #fff;
+	--mid: #8a8a8a;
+	--font-display: 'Space Grotesk Variable', system-ui, sans-serif;
+	--font-body: 'Space Grotesk Variable', system-ui, sans-serif;
+	--font-mono: 'JetBrains Mono', ui-monospace, monospace;
+	--wrap: min(72rem, 100% - 2.5rem);
+	/* --px (current pixel size) is set by the pixel stage; use it to keep small text legible */
+	--px: 2px;
+	--small: max(1rem, calc(var(--px) * 4.5));
+}
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
+html,
+body {
+	margin: 0;
+	height: 100%;
+	overflow: hidden; /* scrolling happens inside the pixel stage */
+	background: #000;
+}
+
+body {
+	color: var(--ink);
+	font-family: var(--font-body);
+	font-size: clamp(1rem, 0.95rem + 0.3vw, 1.2rem);
+	font-weight: 500;
+	line-height: 1.55;
+	-webkit-text-size-adjust: 100%;
+}
+
+h1,
+h2,
+h3 {
+	font-family: var(--font-display);
+	line-height: 1.05;
+	margin: 0;
+}
+
+a {
+	color: inherit;
+}
+
+::selection {
+	background: var(--ink);
+	color: var(--paper);
+}
